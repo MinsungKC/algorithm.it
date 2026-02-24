@@ -30,6 +30,7 @@ const DEFAULT_WEIGHTS = {
   descoringAvg:    { label: 'Avg Descoring',           v: 0.4, max: 2.0 },
   penaltyAvoid:    { label: 'Penalty Avoidance',       v: 0.4, max: 2.0 },
   draftPriority:   { label: 'Draft Priority',          v: 0.5, max: 2.0 },
+  canDoublePark:   { label: 'Can Double Park',          v: 0.8, max: 2.0 },
 };
 
 // ── Waypoint styles ───────────────────────────────────────────────────────────
@@ -365,6 +366,35 @@ function buildStepHTML(step) {
           ${mkToggle('crossedCenter',['true','false'],['Yes','No'],'false')}
         </div>
       </div>
+
+      <div class="divider"></div>
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--text3);margin-bottom:10px;">Zone Control at End of Auto</div>
+
+      <div class="form-group">
+        <label class="form-label">Long Goal Zones Controlled <span style="color:var(--text3);font-weight:400">(+10 pts each)</span></label>
+        <div class="stepper">
+          <button class="stepper-btn" onclick="stepDec('autoLongZonesControlled',0,2)">−</button>
+          <span class="stepper-val" id="val-autoLongZonesControlled">0</span>
+          <button class="stepper-btn" onclick="stepInc('autoLongZonesControlled',0,2)">+</button>
+        </div>
+        <p class="form-hint">0, 1, or 2 long goal zones held at auto end</p>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Center Goal Upper <span style="color:var(--text3)">+8 pts</span></label>
+          <div class="toggle-group" id="f_autoCenterUpperControlled">
+            ${mkToggle('autoCenterUpperControlled',['true','false'],['✓ Yes','No'],'false')}
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Center Goal Lower <span style="color:var(--text3)">+6 pts</span></label>
+          <div class="toggle-group" id="f_autoCenterLowerControlled">
+            ${mkToggle('autoCenterLowerControlled',['true','false'],['✓ Yes','No'],'false')}
+          </div>
+        </div>
+      </div>
+      <div class="divider"></div>
+
       <div class="form-group">
         <label class="form-label">Auto Routine Type</label>
         <div class="toggle-group" id="f_autoRoutine">
@@ -449,6 +479,34 @@ function buildStepHTML(step) {
           </div>
         </div>
       </div>
+      <div class="divider"></div>
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--text3);margin-bottom:10px;">Zone Control During Driver Period</div>
+
+      <div class="form-group">
+        <label class="form-label">Long Goal Zones Controlled <span style="color:var(--text3);font-weight:400">(+10 pts each)</span></label>
+        <div class="stepper">
+          <button class="stepper-btn" onclick="stepDec('driverLongZonesControlled',0,2)">−</button>
+          <span class="stepper-val" id="val-driverLongZonesControlled">0</span>
+          <button class="stepper-btn" onclick="stepInc('driverLongZonesControlled',0,2)">+</button>
+        </div>
+        <p class="form-hint">Zones held during driver control (may differ from final end-of-match)</p>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Center Goal Upper <span style="color:var(--text3)">+8 pts</span></label>
+          <div class="toggle-group" id="f_driverCenterUpperControlled">
+            ${mkToggle('driverCenterUpperControlled',['true','false'],['✓ Yes','No'],'false')}
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Center Goal Lower <span style="color:var(--text3)">+6 pts</span></label>
+          <div class="toggle-group" id="f_driverCenterLowerControlled">
+            ${mkToggle('driverCenterLowerControlled',['true','false'],['✓ Yes','No'],'false')}
+          </div>
+        </div>
+      </div>
+      <div class="divider"></div>
+
       <div class="form-group">
         <label class="form-label">Driver Skill</label>
         <div class="star-group" id="f_driverSkill">${mkStars('driverSkill',3)}</div>
@@ -517,6 +575,16 @@ function buildStepHTML(step) {
           <button class="toggle-btn green" data-field="parking" data-val="single" onclick="toggleSelect('parking','single',this)">🅿 This Robot (+8)</button>
           <button class="toggle-btn green" data-field="parking" data-val="both"   onclick="toggleSelect('parking','both',this)">🅿🅿 Both Robots (+30)</button>
         </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Can Double Park? <span style="color:var(--text3);font-weight:400">(capability note for rankings)</span></label>
+        <div class="toggle-group" id="f_canDoublePark">
+          <button class="toggle-btn green"  data-field="canDoublePark" data-val="yes"   onclick="toggleSelect('canDoublePark','yes',this)">✓ Yes</button>
+          <button class="toggle-btn yellow" data-field="canDoublePark" data-val="maybe" onclick="toggleSelect('canDoublePark','maybe',this)">? Maybe</button>
+          <button class="toggle-btn red"    data-field="canDoublePark" data-val="no"    onclick="toggleSelect('canDoublePark','no',this)">✗ No</button>
+        </div>
+        <p class="form-hint">Can this robot reliably park with its partner for the +30 bonus?</p>
       </div>
 
       <div class="form-group">
@@ -591,7 +659,8 @@ function showBotOther(show) {
 const stepperFields = {
   matchNumber:1, autoBalls:0, autoGoalsUsed:0,
   driverBalls:0, ballsDefended:0, descored:0, penalties:0,
-  longZonesControlled:0
+  longZonesControlled:0,
+  autoLongZonesControlled:0, driverLongZonesControlled:0
 };
 function stepInc(f,_min,max){ stepperFields[f]=Math.min(max,(stepperFields[f]||0)+1); const e=document.getElementById(`val-${f}`); if(e)e.textContent=stepperFields[f]; }
 function stepDec(f,min,_max){ stepperFields[f]=Math.max(min,(stepperFields[f]||0)-1); const e=document.getElementById(`val-${f}`); if(e)e.textContent=stepperFields[f]; }
@@ -660,7 +729,10 @@ function collectStep(step) {
     wizardEntry.autoRoutine    = toggleValues.autoRoutine  || 'simple';
     wizardEntry.autoReliability= starValues.autoReliability || 3;
     wizardEntry.autoNotes      = document.getElementById('f_autoNotes')?.value || '';
-    wizardEntry.autoRoute      = JSON.parse(JSON.stringify(autoRouteData));
+    wizardEntry.autoRoute                 = JSON.parse(JSON.stringify(autoRouteData));
+    wizardEntry.autoLongZonesControlled   = stepperFields.autoLongZonesControlled;
+    wizardEntry.autoCenterUpperControlled = toggleValues.autoCenterUpperControlled === 'true';
+    wizardEntry.autoCenterLowerControlled = toggleValues.autoCenterLowerControlled === 'true';
   }
   if (step === 3) {
     wizardEntry.driverBalls     = stepperFields.driverBalls;
@@ -672,7 +744,10 @@ function collectStep(step) {
     wizardEntry.coordination    = starValues.coordination    || 3;
     wizardEntry.playStyle       = toggleValues.playStyle     || 'balanced';
     wizardEntry.disabled        = toggleValues.disabled      || 'no';
-    wizardEntry.descoringNotes  = document.getElementById('f_descoringNotes')?.value || '';
+    wizardEntry.descoringNotes              = document.getElementById('f_descoringNotes')?.value || '';
+    wizardEntry.driverLongZonesControlled   = stepperFields.driverLongZonesControlled;
+    wizardEntry.driverCenterUpperControlled = toggleValues.driverCenterUpperControlled === 'true';
+    wizardEntry.driverCenterLowerControlled = toggleValues.driverCenterLowerControlled === 'true';
   }
   if (step === 4) {
     wizardEntry.outcome              = toggleValues.outcome || 'tie';
@@ -687,6 +762,7 @@ function collectStep(step) {
     wizardEntry.concerns             = [...tagValues.concerns];
     wizardEntry.wouldDraft           = toggleValues.wouldDraft || 'maybe';
     wizardEntry.notes                = document.getElementById('f_notes')?.value || '';
+    wizardEntry.canDoublePark        = toggleValues.canDoublePark || 'no';
   }
 }
 
@@ -1211,7 +1287,8 @@ function calcRankScore(stats) {
     winRate * 25                                  * w.winRate +
     (parseFloat(stats.avgDescored)||0) * 3        * w.descoringAvg +
     (1 - Math.min(1,(stats.avgPenalties||0)/5)) * 15 * w.penaltyAvoid +
-    (stats.wouldDraftPct||0) / 100 * 20           * w.draftPriority
+    (stats.wouldDraftPct||0) / 100 * 20           * w.draftPriority +
+    (stats.canDoubleParkPct||0) / 100 * 20        * w.canDoublePark
   );
   return raw;
 }
@@ -1238,7 +1315,7 @@ function renderRankingsTable() {
     <div class="card" style="padding:0;overflow:auto;">
       <table class="rank-table">
         <thead><tr>
-          <th>Rank</th><th>Team</th><th>Bot Type</th><th>Score</th><th>Avg Pts</th><th>Blocks</th><th>AWP%</th><th>Auto</th><th>Driver</th><th>W/L</th><th>Draft?</th>
+          <th>Rank</th><th>Team</th><th>Bot Type</th><th>Score</th><th>Avg Pts</th><th>Blocks</th><th>AWP%</th><th>Auto</th><th>Driver</th><th>W/L</th><th>Dbl Park</th><th>Draft?</th>
         </tr></thead>
         <tbody>${teams.map((row,i)=>{
           const rn = i<3 ? `rank-${i+1}` : 'rank-n';
@@ -1260,6 +1337,7 @@ function renderRankingsTable() {
             <td>${renderStarsMini(Math.round(row.stats.avgAutoReliability))}</td>
             <td>${renderStarsMini(Math.round(row.stats.avgDriverSkill))}</td>
             <td class="mono">${row.stats.wins}W/${row.stats.losses}L</td>
+            <td style="font-size:11px;color:${row.stats.canDoubleParkPct>=60?'var(--green)':row.stats.canDoubleParkPct<=30?'var(--red)':'var(--text2)'}">${row.stats.canDoubleParkPct}%</td>
             <td style="font-size:11px;color:${row.stats.wouldDraftPct>=60?'var(--green)':row.stats.wouldDraftPct<=30?'var(--red)':'var(--text2)'}">${row.stats.wouldDraftPct}%</td>
           </tr>`;
         }).join('')}</tbody>
@@ -1273,7 +1351,7 @@ function calcStats(entries) {
     matches:0, avgCalcPoints:'—', avgBalls:'—', avgAutoBalls:'—', avgDriverBalls:'—',
     avgDescored:'—', awpRate:0, avgRating:'—', avgDriverSkill:'—', avgConsistency:'—',
     avgCoordination:'—', avgAutoReliability:'—', wins:0, losses:0, avgPenalties:0,
-    wouldDraftPct:0, avgScore:'—', topStrengths:[], topConcerns:[]
+    wouldDraftPct:0, canDoubleParkPct:0, avgScore:'—', topStrengths:[], topConcerns:[]
   };
   const avg = arr => arr.length ? +(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(2) : 0;
 
@@ -1307,6 +1385,7 @@ function calcStats(entries) {
     avgPenalties:      avg(entries.map(e=>e.penalties||0)),
     wouldDraftPct:     Math.round(draftYes/entries.length*100),
     avgScore:          avg(entries.map(e=>e.allianceScore||0).filter(Boolean)),
+    canDoubleParkPct:  Math.round(entries.filter(e=>e.canDoublePark==='yes').length/entries.length*100),
     topStrengths:      Object.entries(strengthCounts).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([t])=>t),
     topConcerns:       Object.entries(concernCounts).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([t])=>t)
   };
