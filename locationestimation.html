@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Robot Localization Field</title>
+  <link rel="stylesheet" href="field.css">
+</head>
+<body>
+
+<header>
+  <h1>Robot Localization Field</h1>
+  <span class="hint">Drag to move &bull; Drag rotation handles to orient &bull; Scroll = zoom &bull; 12×12 field (0–12)</span>
+</header>
+
+<div class="workspace">
+
+  <!-- ── Left Sidebar ── -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <h2>Add Objects</h2>
+      <div class="add-buttons">
+        <button class="btn btn-landmark" onclick="addObject('landmark')">◆ Add Landmark</button>
+        <button class="btn btn-obstacle" onclick="addObject('obstacle')">■ Add Obstacle</button>
+        <button class="btn btn-clear"    onclick="clearAll()">↺ Reset All</button>
+      </div>
+    </div>
+    <div class="sidebar-section" style="padding-bottom:6px;"><h2>Objects</h2></div>
+    <div class="object-list" id="objectList"></div>
+  </div>
+
+  <!-- ── Field Canvas ── -->
+  <div class="field-area">
+    <canvas id="fieldCanvas"></canvas>
+  </div>
+
+  <!-- ── Right Info Panel ── -->
+  <div class="info-panel">
+
+    <!-- Robot position + angle -->
+    <div class="panel-section">
+      <h2>Robot</h2>
+      <div class="prop-row">
+        <span class="prop-label">X</span>
+        <span class="prop-value mono" id="robotX">6.00</span>
+      </div>
+      <div class="prop-row">
+        <span class="prop-label">Y</span>
+        <span class="prop-value mono" id="robotY">6.00</span>
+      </div>
+      <div class="prop-row">
+        <span class="prop-label">Angle</span>
+        <input class="angle-input" type="number" id="robotAngleInput"
+               min="0" max="359.9" step="0.1" value="0"
+               oninput="setRobotAngle(this.value)">
+        <span class="prop-unit">°</span>
+      </div>
+      <input type="range" class="range-full" id="robotAngleSlider"
+             min="0" max="359.9" step="0.1" value="0"
+             oninput="setRobotAngle(this.value)">
+    </div>
+
+    <!-- Cursor coords -->
+    <div class="panel-section">
+      <h2>Cursor</h2>
+      <div class="prop-row">
+        <span class="prop-label">X</span>
+        <span class="prop-value mono" id="cursorX">—</span>
+      </div>
+      <div class="prop-row">
+        <span class="prop-label">Y</span>
+        <span class="prop-value mono" id="cursorY">—</span>
+      </div>
+    </div>
+
+    <!-- Selected object properties (dynamic) -->
+    <div class="panel-section">
+      <h2>Selected</h2>
+      <div id="selectedProps"><p class="dim-text">Nothing selected</p></div>
+    </div>
+
+    <!-- Sensor readings -->
+    <div class="panel-section">
+      <h2>Sensor Distances</h2>
+      <div class="sensor-readings">
+        <div class="sensor-reading">
+          <span class="sensor-dot" style="background:#facc15"></span>
+          <span class="sensor-name">d1 Front</span>
+          <span class="sensor-dist mono" id="dist1">—</span>
+        </div>
+        <div class="sensor-reading">
+          <span class="sensor-dot" style="background:#4ade80"></span>
+          <span class="sensor-name">d2 Right</span>
+          <span class="sensor-dist mono" id="dist2">—</span>
+        </div>
+        <div class="sensor-reading">
+          <span class="sensor-dot" style="background:#38bdf8"></span>
+          <span class="sensor-name">d3 Back</span>
+          <span class="sensor-dist mono" id="dist3">—</span>
+        </div>
+        <div class="sensor-reading">
+          <span class="sensor-dot" style="background:#fb923c"></span>
+          <span class="sensor-name">d4 Left</span>
+          <span class="sensor-dist mono" id="dist4">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sensor position adjustment -->
+    <div class="panel-section">
+      <h2>Sensor Positions</h2>
+      <div class="sensor-config">
+        <div class="sensor-cfg-row">
+          <span class="sensor-cfg-label"><span class="sensor-dot" style="background:#facc15"></span>Front</span>
+          <input type="range" class="range-sensor" id="sOffset0"
+                 min="-1" max="1" step="0.01" value="0"
+                 oninput="setSensorOffset(0,this.value)">
+          <span class="sensor-cfg-val mono" id="sOffVal0">0.00</span>
+        </div>
+        <div class="sensor-cfg-row">
+          <span class="sensor-cfg-label"><span class="sensor-dot" style="background:#4ade80"></span>Right</span>
+          <input type="range" class="range-sensor" id="sOffset1"
+                 min="-1" max="1" step="0.01" value="0"
+                 oninput="setSensorOffset(1,this.value)">
+          <span class="sensor-cfg-val mono" id="sOffVal1">0.00</span>
+        </div>
+        <div class="sensor-cfg-row">
+          <span class="sensor-cfg-label"><span class="sensor-dot" style="background:#38bdf8"></span>Back</span>
+          <input type="range" class="range-sensor" id="sOffset2"
+                 min="-1" max="1" step="0.01" value="0"
+                 oninput="setSensorOffset(2,this.value)">
+          <span class="sensor-cfg-val mono" id="sOffVal2">0.00</span>
+        </div>
+        <div class="sensor-cfg-row">
+          <span class="sensor-cfg-label"><span class="sensor-dot" style="background:#fb923c"></span>Left</span>
+          <input type="range" class="range-sensor" id="sOffset3"
+                 min="-1" max="1" step="0.01" value="0"
+                 oninput="setSensorOffset(3,this.value)">
+          <span class="sensor-cfg-val mono" id="sOffVal3">0.00</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="panel-section">
+      <h2>Legend</h2>
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#8b5cf6;border-radius:50%;"></div>Robot
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#3b82f6;clip-path:polygon(50% 0%,100% 100%,0% 100%);border-radius:0;"></div>Landmark
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#ef4444;"></div>Obstacle
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="border-radius:50%;border:2px solid #94a3b8;background:transparent;"></div>Rotate handle
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /info-panel -->
+</div><!-- /workspace -->
+
+<script src="field.js"></script>
+</body>
+</html>
