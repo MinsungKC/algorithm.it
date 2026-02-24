@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Push Back Scout</title>
+  <link rel="stylesheet" href="scouting.css">
+</head>
+<body>
+
+<!-- ── Navigation ── -->
+<nav class="scout-nav">
+  <div class="nav-logo">⬡ Push Back Scout <span>VEX 2025–26</span></div>
+  <div class="nav-links">
+    <button class="nav-link active" onclick="showView('home')">Home</button>
+    <button class="nav-link" onclick="showView('scout')">Scout</button>
+    <button class="nav-link" onclick="showView('teams')">Teams</button>
+    <button class="nav-link" onclick="showView('compare')">Compare</button>
+  </div>
+  <div class="nav-right">
+    <select class="comp-select" id="compSelect" onchange="setActiveComp(this.value)">
+      <option value="">— No Competition —</option>
+    </select>
+    <button class="btn btn-sm btn-primary" onclick="showModal('addComp')">+ Comp</button>
+  </div>
+</nav>
+
+<!-- ── Main ── -->
+<main class="scout-main">
+
+  <!-- ════ HOME VIEW ════ -->
+  <section class="view active" id="view-home">
+    <div class="view-header flex justify-between items-center flex-wrap gap-8">
+      <div>
+        <h1 id="homeTitle">Dashboard</h1>
+        <p id="homeSubtitle">Select or add a competition to start scouting.</p>
+      </div>
+      <div class="flex gap-8">
+        <button class="btn btn-ghost btn-sm" onclick="exportData()">↓ Export JSON</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportCSV()">↓ Export CSV</button>
+        <button class="btn btn-primary btn-sm" onclick="showView('scout')">+ Scout Match</button>
+      </div>
+    </div>
+    <div class="stats-grid" id="homeStats"></div>
+    <div id="homeRecent"></div>
+  </section>
+
+  <!-- ════ SCOUT VIEW ════ -->
+  <section class="view" id="view-scout">
+    <div class="wizard-wrap">
+      <div class="view-header">
+        <h1>Scout a Match</h1>
+        <p>Fill in each step during or after the match.</p>
+      </div>
+
+      <!-- Progress -->
+      <div class="wizard-progress">
+        <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:25%"></div></div>
+        <div class="step-indicators" id="stepIndicators"></div>
+      </div>
+
+      <!-- Steps rendered by JS into this container -->
+      <div id="wizardSteps"></div>
+
+      <!-- Nav buttons -->
+      <div class="wizard-nav">
+        <button class="btn btn-ghost" id="btnPrev" onclick="wizardPrev()">← Back</button>
+        <span id="wizardStepLabel" class="text-muted text-xs"></span>
+        <button class="btn btn-primary" id="btnNext" onclick="wizardNext()">Next →</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ TEAMS VIEW ════ -->
+  <section class="view" id="view-teams">
+    <div class="search-bar-row">
+      <input class="search-input" id="teamSearch" placeholder="Search team number or notes…" oninput="renderTeams()">
+      <select class="comp-select" id="teamCompFilter" onchange="renderTeams()">
+        <option value="">All Competitions</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="renderTeams()">↻</button>
+    </div>
+    <div id="teamsContent"></div>
+  </section>
+
+  <!-- ════ COMPARE VIEW ════ -->
+  <section class="view" id="view-compare">
+    <div class="view-header">
+      <h1>Compare Teams</h1>
+      <p>Add up to 4 teams to compare stats side by side.</p>
+    </div>
+    <div class="compare-add-row">
+      <input class="search-input form-input-sm" id="compareInput" placeholder="Team #" style="max-width:110px">
+      <button class="btn btn-primary btn-sm" onclick="addCompareTeam()">+ Add Team</button>
+    </div>
+    <div class="compare-team-chips" id="compareChips"></div>
+    <div id="compareContent"></div>
+  </section>
+
+</main>
+
+<!-- ════ ADD COMPETITION MODAL ════ -->
+<div class="modal-overlay hidden" id="modal-addComp">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>Add Competition</h2>
+      <button class="modal-close" onclick="closeModal('addComp')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Competition Name *</label>
+      <input class="form-input" id="newCompName" placeholder="e.g. State Championship 2026">
+    </div>
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label">Date</label>
+        <input class="form-input" type="date" id="newCompDate">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Location</label>
+        <input class="form-input" id="newCompLocation" placeholder="City, Venue">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('addComp')">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="submitAddComp()">Create Competition</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ DELETE CONFIRM MODAL ════ -->
+<div class="modal-overlay hidden" id="modal-confirmDelete">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>Delete Entry?</h2>
+      <button class="modal-close" onclick="closeModal('confirmDelete')">✕</button>
+    </div>
+    <p class="text-muted" style="font-size:13px;">This will permanently delete this scouting entry. Are you sure?</p>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('confirmDelete')">Cancel</button>
+      <button class="btn btn-danger btn-sm" id="confirmDeleteBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div class="toast hidden" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="scouting.js"></script>
+</body>
+</html>
