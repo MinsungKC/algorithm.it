@@ -119,15 +119,15 @@ function showView(name) {
 
   const view = document.getElementById(`view-${name}`);
   if (view) view.classList.add('active');
-  const order = ['home','scout','teams','compare','rankings'];
-  const btnIdx = order.indexOf(name);
-  document.querySelectorAll('.nav-link')[btnIdx]?.classList.add('active');
+  const activeBtn = document.querySelector(`.nav-link[data-view="${name}"]`);
+  if (activeBtn) activeBtn.classList.add('active');
 
   if (name === 'home')     renderHome();
   if (name === 'scout')    initWizard();
   if (name === 'teams')    renderTeams();
   if (name === 'compare')  renderCompare();
   if (name === 'rankings') renderRankings();
+  if (name === 'schedule') renderSchedule();
 }
 
 // ── Competition management ────────────────────────────────────────────────────
@@ -280,7 +280,9 @@ function buildStepHTML(step) {
           <label class="form-label">Match Number *</label>
           <div class="stepper">
             <button class="stepper-btn" onclick="stepDec('matchNumber',1,200)">−</button>
-            <span class="stepper-val" id="val-matchNumber">1</span>
+            <input class="stepper-val stepper-input" id="val-matchNumber" type="number"
+                   min="1" max="200" value="1"
+                   oninput="stepperFields.matchNumber=Math.min(200,Math.max(1,parseInt(this.value)||1))">
             <button class="stepper-btn" onclick="stepInc('matchNumber',1,200)">+</button>
           </div>
         </div>
@@ -662,8 +664,8 @@ const stepperFields = {
   longZonesControlled:0,
   autoLongZonesControlled:0, driverLongZonesControlled:0
 };
-function stepInc(f,_min,max){ stepperFields[f]=Math.min(max,(stepperFields[f]||0)+1); const e=document.getElementById(`val-${f}`); if(e)e.textContent=stepperFields[f]; }
-function stepDec(f,min,_max){ stepperFields[f]=Math.max(min,(stepperFields[f]||0)-1); const e=document.getElementById(`val-${f}`); if(e)e.textContent=stepperFields[f]; }
+function stepInc(f,_min,max){ stepperFields[f]=Math.min(max,(stepperFields[f]||0)+1); const e=document.getElementById(`val-${f}`); if(e){if(e.tagName==='INPUT')e.value=stepperFields[f];else e.textContent=stepperFields[f];} }
+function stepDec(f,min,_max){ stepperFields[f]=Math.max(min,(stepperFields[f]||0)-1); const e=document.getElementById(`val-${f}`); if(e){if(e.tagName==='INPUT')e.value=stepperFields[f];else e.textContent=stepperFields[f];} }
 
 // ── Toggle & star state ───────────────────────────────────────────────────────
 const toggleValues = {};
@@ -687,7 +689,7 @@ function toggleTag(field,btn){
 
 // ── Restore form values ───────────────────────────────────────────────────────
 function restoreStepValues() {
-  Object.entries(stepperFields).forEach(([k,v])=>{ const e=document.getElementById(`val-${k}`); if(e)e.textContent=v; });
+  Object.entries(stepperFields).forEach(([k,v])=>{ const e=document.getElementById(`val-${k}`); if(e){if(e.tagName==='INPUT')e.value=v;else e.textContent=v;} });
   Object.entries(toggleValues).forEach(([field,val])=>{
     const btn=document.querySelector(`.toggle-btn[data-field="${field}"][data-val="${val}"]`);
     if(btn){ const g=btn.closest('.toggle-group'); if(g)g.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
@@ -789,6 +791,7 @@ function submitEntry() {
   const entry = { ...wizardEntry, id: genId(), createdAt: Date.now(),
     calculatedPoints: calculatePoints(wizardEntry) };
   addEntry(entry);
+  pushToFirebase();
   showToast(`✓ Team ${entry.teamNumber} — ${entry.matchType.charAt(0).toUpperCase()}${entry.matchNumber} submitted (${entry.calculatedPoints} pts)`, 'success');
   autoRouteData = { path: [], waypoints: [] };
   tagValues.strengths = new Set(); tagValues.concerns = new Set();
@@ -1465,6 +1468,636 @@ function triggerDownload(blob,filename){
 function fmtDate(iso){if(!iso)return'';const d=new Date(iso+'T00:00:00');return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
 function truncate(str,n){return str.length>n?str.slice(0,n)+'…':str;}
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ── SETTINGS ──────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+const KEY_SETTINGS = 'pb_settings';
+const KEY_SCHEDULE = 'pb_schedule';
+const KEY_TEAMS_RE = 'pb_re_teams';
+const KEY_OPR      = 'pb_opr';
+const KEY_RE_EVENT = 'pb_re_event';
+const KEY_HISTORY  = 'pb_history';
+
+function getSettings() { return JSON.parse(localStorage.getItem(KEY_SETTINGS) || '{}'); }
+function saveSettings(s) { localStorage.setItem(KEY_SETTINGS, JSON.stringify(s)); }
+
+function openSettings() {
+  const s = getSettings();
+  const el = id => document.getElementById(id);
+  el('s_reApiKey').value = s.reApiKey  || '';
+  el('s_seasonId').value = s.seasonId  || 190;
+  el('s_fbConfig').value = s.fbConfig  ? JSON.stringify(s.fbConfig, null, 2) : '';
+  el('s_roomCode').value = s.roomCode  || '';
+  updateSyncStatusUI();
+  showModal('settings');
+}
+
+function saveSettingsForm() {
+  const el = id => document.getElementById(id);
+  const reApiKey = el('s_reApiKey').value.trim();
+  const seasonId = parseInt(el('s_seasonId').value) || 190;
+  let fbConfig = null;
+  try {
+    const raw = el('s_fbConfig').value.trim();
+    if (raw) fbConfig = JSON.parse(raw);
+  } catch(e) { showToast('Firebase config is not valid JSON.', 'error'); return; }
+  const roomCode = el('s_roomCode').value.trim();
+  const prev = getSettings();
+  saveSettings({ ...prev, reApiKey, seasonId, fbConfig, roomCode });
+  closeModal('settings');
+  showToast('Settings saved.', 'success');
+  if (fbConfig && roomCode && syncEnabled) initFirebaseSync(fbConfig, roomCode);
+}
+
+async function testReApi() {
+  const s = getSettings();
+  if (!s.reApiKey) { showToast('Enter an API key first.', 'error'); return; }
+  try {
+    showToast('Testing connection…', 'success');
+    const res = await reApiFetch('programs', {});
+    const vrc = (res.data||[]).find(p => p.abbr === 'VRC' || p.abbr === 'V5RC');
+    showToast(`API connected! Found: ${vrc ? vrc.name : res.data[0]?.name}`, 'success');
+  } catch(e) { showToast(`API error: ${e.message}`, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── DATA IMPORT ───────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+function triggerImport() { document.getElementById('importFileInput').click(); }
+
+function handleImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const payload = JSON.parse(e.target.result);
+      const existingComps  = getComps();
+      const existingData   = getData();
+      const existingCompIds  = new Set(existingComps.map(c => c.id));
+      const existingEntryIds = new Set(existingData.map(d => d.id));
+      const newComps   = (payload.comps || []).filter(c => !existingCompIds.has(c.id));
+      const newEntries = (payload.data  || []).filter(d => !existingEntryIds.has(d.id));
+      saveComps([...existingComps, ...newComps]);
+      saveData([...existingData, ...newEntries]);
+      updateCompSelectors();
+      renderHome();
+      showToast(`Imported ${newComps.length} comp(s), ${newEntries.length} entries.`, 'success');
+    } catch(err) { showToast('Import failed — invalid JSON file.', 'error'); }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── FIREBASE SYNC ─────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+let syncEnabled  = false;
+let fbListenerRef = null;
+
+function updateSyncStatusUI() {
+  const indicator = document.getElementById('syncIndicator');
+  const statusTxt = document.getElementById('syncStatusText');
+  const toggleBtn = document.getElementById('syncToggleBtn');
+  const s = getSettings();
+  if (indicator) indicator.classList.toggle('hidden', !syncEnabled);
+  if (statusTxt) statusTxt.textContent = syncEnabled
+    ? `Synced — room: ${s.roomCode || '—'}`
+    : 'Sync disabled';
+  if (toggleBtn) {
+    toggleBtn.textContent  = syncEnabled ? 'Disable Sync' : 'Enable Sync';
+    toggleBtn.className    = `btn btn-sm ${syncEnabled ? 'btn-danger' : 'btn-primary'}`;
+  }
+}
+
+function toggleSync() {
+  const s = getSettings();
+  if (!syncEnabled) {
+    if (!s.fbConfig || !s.roomCode) {
+      showToast('Fill in Firebase config and room code first.', 'error'); return;
+    }
+    syncEnabled = true;
+    saveSettings({ ...s, syncEnabled: true });
+    initFirebaseSync(s.fbConfig, s.roomCode);
+  } else {
+    syncEnabled = false;
+    saveSettings({ ...s, syncEnabled: false });
+    if (fbListenerRef) { try { fbListenerRef.off(); } catch(e) {} fbListenerRef = null; }
+    showToast('Sync disabled.', 'success');
+  }
+  updateSyncStatusUI();
+}
+
+function loadFirebaseSDK(callback) {
+  if (window.firebase && window.firebase.database) { callback(); return; }
+  const FB_VER = '10.12.0';
+  const appScript = document.getElementById('fbAppScript');
+  const dbScript  = document.getElementById('fbDbScript');
+  appScript.src = `https://www.gstatic.com/firebasejs/${FB_VER}/firebase-app-compat.js`;
+  appScript.onload = function() {
+    dbScript.src = `https://www.gstatic.com/firebasejs/${FB_VER}/firebase-database-compat.js`;
+    dbScript.onload = callback;
+    dbScript.onerror = () => showToast('Failed to load Firebase SDK.', 'error');
+  };
+  appScript.onerror = () => showToast('Failed to load Firebase SDK.', 'error');
+}
+
+function initFirebaseSync(fbConfig, roomCode) {
+  loadFirebaseSDK(() => {
+    try {
+      if (!window.firebase.apps.length) window.firebase.initializeApp(fbConfig);
+      const db = window.firebase.database();
+      const ref = db.ref(`rooms/${roomCode}`);
+      fbListenerRef = ref;
+      ref.on('value', snap => {
+        const remote = snap.val();
+        if (remote) mergeRemoteData(remote.comps || [], remote.data || []);
+      });
+      pushToFirebase();
+      showToast(`Sync active — room "${roomCode}".`, 'success');
+      updateSyncStatusUI();
+    } catch(e) { showToast(`Firebase error: ${e.message}`, 'error'); syncEnabled = false; updateSyncStatusUI(); }
+  });
+}
+
+function pushToFirebase() {
+  if (!syncEnabled || !fbListenerRef) return;
+  fbListenerRef.set({ comps: getComps(), data: getData(), ts: Date.now() })
+    .catch(e => showToast(`Sync write failed: ${e.message}`, 'error'));
+}
+
+function mergeRemoteData(remoteComps, remoteEntries) {
+  const localComps   = getComps();
+  const localEntries = getData();
+  const compIds   = new Set(localComps.map(c => c.id));
+  const entryIds  = new Set(localEntries.map(e => e.id));
+  const addedComps   = remoteComps.filter(c => !compIds.has(c.id));
+  const addedEntries = remoteEntries.filter(e => !entryIds.has(e.id));
+  if (!addedComps.length && !addedEntries.length) return;
+  saveComps([...localComps, ...addedComps]);
+  saveData([...localEntries, ...addedEntries]);
+  updateCompSelectors();
+  renderHome();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── ROBOTEVENTS API ───────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+const RE_BASE = 'https://www.robotevents.com/api/v2';
+
+async function reApiFetch(path, params) {
+  const s = getSettings();
+  if (!s.reApiKey) throw new Error('No API key — add one in Settings ⚙');
+  const url = new URL(`${RE_BASE}/${path}`);
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (Array.isArray(v)) v.forEach(vi => url.searchParams.append(`${k}[]`, vi));
+    else url.searchParams.set(k, v);
+  });
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${s.reApiKey}`, Accept: 'application/json' }
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`RE API ${res.status}: ${txt.slice(0,120)}`);
+  }
+  return res.json();
+}
+
+async function reApiFetchAll(path, params) {
+  let page = 1, all = [];
+  while (true) {
+    const res = await reApiFetch(path, { ...params, page, per_page: 250 });
+    all = all.concat(res.data || []);
+    if (!res.meta || res.meta.current_page >= res.meta.last_page) break;
+    page++;
+  }
+  return all;
+}
+
+async function searchEventsUI() {
+  const input = document.getElementById('eventSearchInput');
+  const query = input?.value.trim();
+  if (!query) { showToast('Enter an event name or SKU.', 'error'); return; }
+  const resultsEl = document.getElementById('eventSearchResults');
+  resultsEl.innerHTML = '<div class="empty-state" style="padding:12px"><p>Searching…</p></div>';
+  try {
+    const s = getSettings();
+    const season = s.seasonId || 190;
+    const events = await reApiFetchAll('events', { name: query, 'season[]': season, 'program[]': 1 });
+    if (!events.length) {
+      resultsEl.innerHTML = '<div class="empty-state" style="padding:12px"><p>No events found. Try a different name or check your API key.</p></div>';
+      return;
+    }
+    resultsEl.innerHTML = events.slice(0, 20).map(ev => `
+      <div class="event-result" onclick="selectEvent(${ev.id}, ${JSON.stringify(ev.name).replace(/'/g,"&#39;")}, '${(ev.start||'').slice(0,10)}')">
+        <div class="event-result-name">${ev.name}</div>
+        <div class="event-result-meta">${ev.sku || ''} · ${(ev.start||'').slice(0,10)} · ${ev.location?.venue||''} ${ev.location?.city||''}</div>
+      </div>`).join('');
+  } catch(e) { resultsEl.innerHTML = `<div class="empty-state" style="padding:12px"><p style="color:var(--red)">${e.message}</p></div>`; }
+}
+
+async function selectEvent(eventId, eventName, eventDate) {
+  closeModal('loadEvent');
+  localStorage.setItem(KEY_RE_EVENT, JSON.stringify({ id: eventId, name: eventName, date: eventDate }));
+  document.getElementById('scheduleEventLabel').textContent = `Loading ${eventName}…`;
+  setScheduleLoader(true, `Loading teams and matches for ${eventName}…`);
+  try {
+    const [teams, matches] = await Promise.all([
+      reApiFetchAll(`events/${eventId}/teams`),
+      reApiFetchAll(`events/${eventId}/matches`)
+    ]);
+    localStorage.setItem(KEY_TEAMS_RE, JSON.stringify(teams));
+    localStorage.setItem(KEY_SCHEDULE, JSON.stringify(matches));
+    const opr = computeOPR(matches, teams);
+    localStorage.setItem(KEY_OPR, JSON.stringify(opr));
+    setScheduleLoader(false);
+    document.getElementById('btnRefreshSchedule').style.display = '';
+    showToast(`Loaded ${teams.length} teams, ${matches.length} matches.`, 'success');
+    renderSchedule();
+  } catch(e) {
+    setScheduleLoader(false);
+    showToast(`Error: ${e.message}`, 'error');
+  }
+}
+
+async function refreshScheduleData() {
+  const ev = JSON.parse(localStorage.getItem(KEY_RE_EVENT) || 'null');
+  if (!ev) { showToast('No event loaded.', 'error'); return; }
+  await selectEvent(ev.id, ev.name, ev.date);
+}
+
+function setScheduleLoader(show, msg) {
+  const loader = document.getElementById('scheduleLoader');
+  const content = document.getElementById('scheduleContent');
+  if (loader) { loader.style.display = show ? '' : 'none'; if (msg) document.getElementById('scheduleLoaderMsg').textContent = msg; }
+  if (content) content.style.display = show ? 'none' : '';
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── OPR / DPR / CCWM CALCULATION ─────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+function computeOPR(matches, teams) {
+  // Map team id → index and canonical number string
+  const teamIdx = {};
+  const teamNums = [];
+  (teams || []).forEach((t, i) => {
+    const num = t.number || String(t.id);
+    teamIdx[t.id] = i;
+    teamNums[i] = num;
+  });
+  const n = teamNums.length;
+  if (n === 0) return {};
+
+  // Filter matches that have scores on both alliances
+  const scored = matches.filter(m =>
+    m.alliances && m.alliances.length >= 2 &&
+    m.alliances.every(a => a.score !== null && a.score !== undefined)
+  );
+  if (scored.length < 2) return {};
+
+  // Build A^T A and right-hand sides using normal equations
+  const AtA    = Array.from({length: n}, () => new Float64Array(n));
+  const bOPR   = new Float64Array(n);
+  const bDPR   = new Float64Array(n);
+  const bCCWM  = new Float64Array(n);
+
+  scored.forEach(m => {
+    m.alliances.forEach((ally, ai) => {
+      const opp      = m.alliances[1 - ai];
+      const myScore  = Number(ally.score)  || 0;
+      const oppScore = Number(opp.score)   || 0;
+      const margin   = myScore - oppScore;
+      const tIdx     = (ally.teams || [])
+        .map(t => teamIdx[t.team?.id ?? t.id])
+        .filter(i => i !== undefined && i !== null);
+      if (!tIdx.length) return;
+      tIdx.forEach(i => {
+        bOPR[i]  += myScore;
+        bDPR[i]  += oppScore;
+        bCCWM[i] += margin;
+        tIdx.forEach(j => { AtA[i][j]++; });
+      });
+    });
+  });
+
+  function gaussElim(AtAIn, bIn) {
+    const aug = AtAIn.map((row, i) => [...row, bIn[i]]);
+    for (let col = 0; col < n; col++) {
+      let maxRow = col;
+      for (let r = col+1; r < n; r++) if (Math.abs(aug[r][col]) > Math.abs(aug[maxRow][col])) maxRow = r;
+      [aug[col], aug[maxRow]] = [aug[maxRow], aug[col]];
+      if (Math.abs(aug[col][col]) < 1e-10) continue;
+      for (let r = 0; r < n; r++) {
+        if (r === col) continue;
+        const f = aug[r][col] / aug[col][col];
+        for (let c = col; c <= n; c++) aug[r][c] -= f * aug[col][c];
+      }
+    }
+    return aug.map((row, i) => Math.abs(row[i]) > 1e-10 ? row[n] / row[i] : 0);
+  }
+
+  const oprVals  = gaussElim(AtA, bOPR);
+  const dprVals  = gaussElim(AtA, bDPR);
+  const ccwmVals = gaussElim(AtA, bCCWM);
+
+  const result = {};
+  teamNums.forEach((num, i) => {
+    result[num] = {
+      opr:  Math.round((oprVals[i]  || 0) * 10) / 10,
+      dpr:  Math.round((dprVals[i]  || 0) * 10) / 10,
+      ccwm: Math.round((ccwmVals[i] || 0) * 10) / 10,
+    };
+  });
+  return result;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── SCHEDULE VIEW ─────────────────────────────────────────════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+let scheduleHighlightTeam = null;
+
+function renderSchedule() {
+  const ev       = JSON.parse(localStorage.getItem(KEY_RE_EVENT) || 'null');
+  const matches  = JSON.parse(localStorage.getItem(KEY_SCHEDULE) || '[]');
+  const teams    = JSON.parse(localStorage.getItem(KEY_TEAMS_RE) || '[]');
+  const opr      = JSON.parse(localStorage.getItem(KEY_OPR) || '{}');
+  const scoutData = getData();
+
+  const labelEl = document.getElementById('scheduleEventLabel');
+  if (labelEl) labelEl.textContent = ev
+    ? `${ev.name}${ev.date ? ' · ' + ev.date : ''} · ${matches.length} matches · ${teams.length} teams`
+    : 'No event loaded — click Load Event to connect to VEX.';
+
+  if (!matches.length) {
+    document.getElementById('scheduleContent').innerHTML =
+      `<div class="empty-state"><div class="empty-icon">📅</div><p>Load a VEX event to see the match schedule.</p></div>`;
+    document.getElementById('scheduleTeamFilter').style.display = 'none';
+    document.getElementById('oprSection').style.display = 'none';
+    return;
+  }
+
+  // Team filter chips
+  const allTeams = [...new Set(
+    matches.flatMap(m => (m.alliances||[]).flatMap(a => (a.teams||[]).map(t => t.team?.name || t.name || '')))
+  )].filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
+
+  const filterEl = document.getElementById('scheduleTeamFilter');
+  if (filterEl) {
+    filterEl.style.display = '';
+    filterEl.innerHTML = allTeams.map(num => {
+      const cnt   = scoutData.filter(e => e.teamNumber === num && e.compId === activeCompId).length;
+      const isAct = num === scheduleHighlightTeam;
+      return `<span class="schedule-chip${isAct?' active':''}" onclick="highlightTeam('${num}')">
+        ${num}${cnt ? `<span class="chip-count">${cnt}</span>` : ''}
+      </span>`;
+    }).join('');
+  }
+
+  // OPR section
+  const oprSection = document.getElementById('oprSection');
+  if (oprSection && Object.keys(opr).length) {
+    oprSection.style.display = '';
+    renderOprTable(opr, scoutData);
+  }
+
+  // Match table
+  const roundOrder = { 'qualifier':0, 'practice':1, 'semifinal':2, 'final':3 };
+  const sorted = [...matches].sort((a, b) => {
+    const ra = roundOrder[a.round?.toLowerCase()] ?? 5;
+    const rb = roundOrder[b.round?.toLowerCase()] ?? 5;
+    return ra !== rb ? ra - rb : (a.matchnum || a.name || 0) - (b.matchnum || b.name || 0);
+  });
+
+  const rows = sorted.map(m => buildMatchRow(m, opr, scoutData)).join('');
+  document.getElementById('scheduleContent').innerHTML = `
+    <div class="card" style="padding:0;overflow:auto;">
+      <table class="schedule-table">
+        <thead><tr>
+          <th>Match</th>
+          <th>Red Alliance</th>
+          <th>Red</th>
+          <th></th>
+          <th>Blue</th>
+          <th>Blue Alliance</th>
+          <th>Predict</th>
+        </tr></thead>
+        <tbody id="scheduleBody">${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function buildMatchRow(m, _opr, scoutData) {
+  const alliances = m.alliances || [];
+  const redAl     = alliances.find(a => a.color === 'red')  || alliances[0] || {};
+  const blueAl    = alliances.find(a => a.color === 'blue') || alliances[1] || {};
+
+  const redTeams  = (redAl.teams  || []).map(t => t.team?.name || t.name || '?');
+  const blueTeams = (blueAl.teams || []).map(t => t.team?.name || t.name || '?');
+  const redScore  = redAl.score !== undefined && redAl.score !== null ? redAl.score : null;
+  const blueScore = blueAl.score !== undefined && blueAl.score !== null ? blueAl.score : null;
+  const played    = redScore !== null && blueScore !== null;
+
+  const hi = scheduleHighlightTeam;
+  const hasHi = hi && (redTeams.includes(hi) || blueTeams.includes(hi));
+  const rowClass = hasHi ? (redTeams.includes(hi) ? 'schedule-row--red-hi' : 'schedule-row--blue-hi') : '';
+
+  const mkPill = (num, color) => {
+    const scouted = scoutData.some(e => e.teamNumber === num);
+    const isHi    = num === hi;
+    return `<span class="team-pill ${color}${isHi?' schedule-row--active':''}" onclick="highlightTeam('${num}')">${num}${scouted ? '<span class="scouted-dot"></span>' : ''}</span>`;
+  };
+
+  const matchLabel = m.name || `${(m.round||'Q')} ${m.matchnum||''}`.trim();
+  const redSc  = played ? `<span class="score-pill red${redScore>blueScore?' winner':''}">${redScore}</span>`  : '—';
+  const blueSc = played ? `<span class="score-pill blue${blueScore>redScore?' winner':''}">${blueScore}</span>` : '—';
+
+  const predictBtn = !played
+    ? `<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:3px 8px;"
+         onclick="showPrediction('${m.id||matchLabel}','${matchLabel}',${JSON.stringify(redTeams)},${JSON.stringify(blueTeams)})">⚡ Predict</button>`
+    : '';
+
+  return `<tr class="${rowClass}" data-red="${redTeams.join(',')}" data-blue="${blueTeams.join(',')}">
+    <td style="font-size:11px;color:var(--text3);white-space:nowrap">${matchLabel}</td>
+    <td>${redTeams.map(n => mkPill(n,'red')).join(' ')}</td>
+    <td>${redSc}</td>
+    <td style="color:var(--text3);font-size:11px;text-align:center">vs</td>
+    <td>${blueSc}</td>
+    <td>${blueTeams.map(n => mkPill(n,'blue')).join(' ')}</td>
+    <td>${predictBtn}</td>
+  </tr>`;
+}
+
+function highlightTeam(num) {
+  scheduleHighlightTeam = (scheduleHighlightTeam === num) ? null : num;
+  renderSchedule();
+}
+
+function renderOprTable(opr, scoutData) {
+  const wrap = document.getElementById('oprTableWrap');
+  if (!wrap) return;
+  const rows = Object.entries(opr)
+    .sort((a, b) => b[1].ccwm - a[1].ccwm)
+    .map(([num, d]) => {
+      const cnt = scoutData.filter(e => e.teamNumber === num).length;
+      const ccwmColor = d.ccwm >= 0 ? 'var(--green)' : 'var(--red)';
+      return `<tr>
+        <td><strong style="color:var(--purple-l)">${num}</strong>${cnt ? ` <span class="chip-count">${cnt}</span>` : ''}</td>
+        <td class="mono">${d.opr}</td>
+        <td class="mono">${d.dpr}</td>
+        <td class="mono" style="color:${ccwmColor}">${d.ccwm >= 0 ? '+' : ''}${d.ccwm}</td>
+      </tr>`;
+    }).join('');
+  wrap.innerHTML = `
+    <div class="card" style="padding:0;overflow:auto;max-height:280px;">
+      <table class="opr-table">
+        <thead><tr><th>Team</th><th>OPR</th><th>DPR</th><th>CCWM</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function toggleOprTable() {
+  const wrap = document.getElementById('oprTableWrap');
+  if (!wrap) return;
+  const open = wrap.style.display !== 'none';
+  wrap.style.display = open ? 'none' : '';
+  const btn = wrap.previousElementSibling;
+  if (btn) btn.innerHTML = btn.innerHTML.replace(/[▶▼]/, open ? '▶' : '▼');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── PREDICTION SYSTEM ─────────────────────────────────════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
+function predictMatch(redTeams, blueTeams) {
+  const opr       = JSON.parse(localStorage.getItem(KEY_OPR) || '{}');
+  const scoutData = getData();
+  const history   = JSON.parse(localStorage.getItem(KEY_HISTORY) || '{}');
+
+  function teamScore(num) {
+    const oprData = opr[num];
+    const entries = scoutData.filter(e => e.teamNumber === num);
+    const stats   = entries.length ? calcStats(entries) : null;
+    const hist    = history[num];
+
+    let score = 0, weight = 0;
+
+    // OPR contribution (weight 0.5)
+    if (oprData && oprData.opr) {
+      score  += oprData.opr * 0.5;
+      weight += 0.5;
+    }
+
+    // Scouting data contribution (weight 0.4)
+    if (stats && stats.matches >= 1) {
+      const pts  = parseFloat(stats.avgCalcPoints) || 0;
+      const rel  = (parseFloat(stats.avgAutoReliability) || 3) / 5;
+      const drv  = (parseFloat(stats.avgDriverSkill)     || 3) / 5;
+      const con  = (parseFloat(stats.avgConsistency)     || 3) / 5;
+      const skillMod = 1 + (rel * 0.08 + drv * 0.12 + con * 0.05);
+      score  += pts * skillMod * 0.4;
+      weight += 0.4;
+    }
+
+    // Historical season record (weight 0.1)
+    if (hist && hist.eventsCount > 0) {
+      const total  = (hist.totalWins || 0) + (hist.totalLosses || 0);
+      const winRate = total > 0 ? hist.totalWins / total : 0.5;
+      score  += winRate * 30 * 0.1; // normalize to ~score range
+      weight += 0.1;
+    }
+
+    return weight > 0 ? score / weight * (weight / 1.0) : 20; // fallback to avg
+  }
+
+  const redScore  = redTeams.reduce((s, t)  => s + teamScore(t),  0);
+  const blueScore = blueTeams.reduce((s, t) => s + teamScore(t), 0);
+  const total     = redScore + blueScore || 1;
+  const redWinProb = redScore / total;
+
+  return {
+    redScore:    Math.round(redScore),
+    blueScore:   Math.round(blueScore),
+    redWinProb:  Math.round(redWinProb * 100),
+    blueWinProb: Math.round((1 - redWinProb) * 100),
+  };
+}
+
+function showPrediction(_matchId, matchLabel, redTeams, blueTeams) {
+  const pred = predictMatch(redTeams, blueTeams);
+  const opr  = JSON.parse(localStorage.getItem(KEY_OPR) || '{}');
+  const scoutData = getData();
+
+  function teamRow(num, color) {
+    const o     = opr[num];
+    const stats = calcStats(scoutData.filter(e => e.teamNumber === num));
+    const clr   = color === 'red' ? '#fca5a5' : '#93c5fd';
+    return `<tr>
+      <td><span class="team-pill ${color}">${num}</span></td>
+      <td class="mono" style="color:${clr}">${o ? o.opr : '—'}</td>
+      <td class="mono" style="color:${clr}">${o ? o.dpr : '—'}</td>
+      <td class="mono" style="color:${o&&o.ccwm>=0?'var(--green)':'var(--red)'}">${o ? (o.ccwm>=0?'+':'')+o.ccwm : '—'}</td>
+      <td class="mono">${stats.matches > 0 ? stats.avgCalcPoints : '—'}</td>
+      <td>${stats.matches > 0 ? renderStarsMini(Math.round(parseFloat(stats.avgDriverSkill)||0)) : '—'}</td>
+      <td style="font-size:11px">${stats.matches}</td>
+    </tr>`;
+  }
+
+  const redPct  = pred.redWinProb;
+  const bluePct = pred.blueWinProb;
+
+  document.getElementById('predictMatchTitle').textContent = `Prediction — ${matchLabel}`;
+  document.getElementById('predictContent').innerHTML = `
+    <div style="margin-bottom:14px;">
+      <div class="predict-bar-wrap">
+        <span style="font-size:12px;color:#fca5a5;font-weight:700;min-width:44px">${redPct}%</span>
+        <div class="predict-bar-track">
+          <div class="predict-bar-red"  style="width:${redPct}%"></div>
+          <div class="predict-bar-blue" style="width:${bluePct}%"></div>
+        </div>
+        <span style="font-size:12px;color:#93c5fd;font-weight:700;min-width:44px;text-align:right">${bluePct}%</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:4px;">
+        <span>🔴 Red — est. ${pred.redScore} pts</span>
+        <span>🔵 Blue — est. ${pred.blueScore} pts</span>
+      </div>
+    </div>
+    <div class="card" style="padding:0;overflow:auto;">
+      <table class="schedule-table">
+        <thead><tr><th>Team</th><th>OPR</th><th>DPR</th><th>CCWM</th><th>Avg Pts</th><th>Driver</th><th>Scouted</th></tr></thead>
+        <tbody>
+          ${redTeams.map(n  => teamRow(n, 'red')).join('')}
+          ${blueTeams.map(n => teamRow(n, 'blue')).join('')}
+        </tbody>
+      </table>
+    </div>
+    <p class="form-hint" style="margin-top:10px;">Based on OPR (50%), scouting data (40%), and prior season record (10%). Prediction confidence improves with more scouted matches.</p>`;
+  showModal('predict');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── TEAM PRIOR HISTORY ────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+async function loadTeamHistory(teamNumber) {
+  const s = getSettings();
+  if (!s.reApiKey) return null;
+  const cached = JSON.parse(localStorage.getItem(KEY_HISTORY) || '{}');
+  if (cached[teamNumber] && (Date.now() - (cached[teamNumber]._ts || 0)) < 3600000) return cached[teamNumber];
+  try {
+    const teamRes = await reApiFetchAll('teams', { number: teamNumber, 'season[]': s.seasonId || 190, 'program[]': 1 });
+    if (!teamRes.length) return null;
+    const teamId  = teamRes[0].id;
+    const rankings = await reApiFetchAll(`teams/${teamId}/rankings`, { 'season[]': s.seasonId || 190 });
+    const eventsCount  = rankings.length;
+    const totalWins    = rankings.reduce((a, r) => a + (r.wins   || 0), 0);
+    const totalLosses  = rankings.reduce((a, r) => a + (r.losses || 0), 0);
+    const avgRank      = eventsCount ? rankings.reduce((a, r) => a + (r.rank || 0), 0) / eventsCount : null;
+    const hist = { teamNumber, eventsCount, totalWins, totalLosses, avgRank, _ts: Date.now() };
+    cached[teamNumber] = hist;
+    localStorage.setItem(KEY_HISTORY, JSON.stringify(cached));
+    return hist;
+  } catch(e) { return null; }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 (function init(){
   const prefs=getPrefs();
@@ -1472,4 +2105,11 @@ function truncate(str,n){return str.length>n?str.slice(0,n)+'…':str;}
   loadWeights();
   updateCompSelectors();
   renderHome();
+  // Re-connect Firebase if sync was previously enabled
+  const s = getSettings();
+  if (s.syncEnabled && s.fbConfig && s.roomCode) {
+    syncEnabled = true;
+    initFirebaseSync(s.fbConfig, s.roomCode);
+  }
+  updateSyncStatusUI();
 })();

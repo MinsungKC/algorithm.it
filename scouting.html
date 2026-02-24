@@ -12,17 +12,20 @@
 <nav class="scout-nav">
   <div class="nav-logo">⬡ Push Back Scout <span>VEX 2025–26</span></div>
   <div class="nav-links">
-    <button class="nav-link active" onclick="showView('home')">Home</button>
-    <button class="nav-link" onclick="showView('scout')">Scout</button>
-    <button class="nav-link" onclick="showView('teams')">Teams</button>
-    <button class="nav-link" onclick="showView('compare')">Compare</button>
-    <button class="nav-link" onclick="showView('rankings')">Rankings</button>
+    <button class="nav-link active" data-view="home"     onclick="showView('home')">Home</button>
+    <button class="nav-link"        data-view="scout"    onclick="showView('scout')">Scout</button>
+    <button class="nav-link"        data-view="teams"    onclick="showView('teams')">Teams</button>
+    <button class="nav-link"        data-view="compare"  onclick="showView('compare')">Compare</button>
+    <button class="nav-link"        data-view="rankings" onclick="showView('rankings')">Rankings</button>
+    <button class="nav-link"        data-view="schedule" onclick="showView('schedule')">Schedule</button>
   </div>
   <div class="nav-right">
+    <span class="sync-indicator hidden" id="syncIndicator" title="Cloud sync active">●</span>
     <select class="comp-select" id="compSelect" onchange="setActiveComp(this.value)">
       <option value="">— No Competition —</option>
     </select>
     <button class="btn btn-sm btn-primary" onclick="showModal('addComp')">+ Comp</button>
+    <button class="btn btn-ghost btn-sm"   onclick="openSettings()" title="Settings">⚙</button>
   </div>
 </nav>
 
@@ -37,6 +40,8 @@
         <p id="homeSubtitle">Select or add a competition to start scouting.</p>
       </div>
       <div class="flex gap-8">
+        <button class="btn btn-ghost btn-sm" onclick="triggerImport()">↑ Import JSON</button>
+        <input  type="file" id="importFileInput" accept=".json" style="display:none" onchange="handleImport(event)">
         <button class="btn btn-ghost btn-sm" onclick="exportData()">↓ Export JSON</button>
         <button class="btn btn-ghost btn-sm" onclick="exportCSV()">↓ Export CSV</button>
         <button class="btn btn-primary btn-sm" onclick="showView('scout')">+ Scout Match</button>
@@ -98,6 +103,56 @@
     <div id="compareContent"></div>
   </section>
 
+  <!-- ════ RANKINGS VIEW ════ -->
+  <section class="view" id="view-rankings">
+    <div class="view-header flex justify-between items-center flex-wrap gap-8">
+      <div>
+        <h1>Team Rankings</h1>
+        <p>Points-based ranking with tunable formula weights.</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="resetWeights()">↺ Reset Weights</button>
+    </div>
+    <div class="card formula-panel" id="formulaPanel" style="margin-bottom:20px;">
+      <div class="section-title" style="margin-bottom:14px;">Formula Weights</div>
+      <div id="weightSliders"></div>
+    </div>
+    <div id="rankingsContent"></div>
+  </section>
+
+  <!-- ════ SCHEDULE VIEW ════ -->
+  <section class="view" id="view-schedule">
+    <div class="view-header flex justify-between items-center flex-wrap gap-8">
+      <div>
+        <h1>Match Schedule</h1>
+        <p id="scheduleEventLabel">No event loaded — click Load Event to connect to VEX.</p>
+      </div>
+      <div class="flex gap-8">
+        <button class="btn btn-ghost btn-sm" id="btnRefreshSchedule" onclick="refreshScheduleData()" style="display:none">↻ Refresh</button>
+        <button class="btn btn-primary btn-sm" onclick="showModal('loadEvent')">Load Event</button>
+      </div>
+    </div>
+
+    <!-- Team filter chips (populated after event loads) -->
+    <div id="scheduleTeamFilter" class="schedule-team-chips" style="display:none"></div>
+
+    <!-- OPR/DPR/CCWM table (collapsible) -->
+    <div id="oprSection" style="display:none;margin-bottom:16px;">
+      <button class="section-title" style="cursor:pointer;background:none;border:none;color:var(--text2);font-size:12px;font-weight:600;padding:0;" onclick="toggleOprTable()">
+        ▶ OPR / DPR / CCWM <span style="color:var(--text3);font-weight:400">(click to expand)</span>
+      </button>
+      <div id="oprTableWrap" style="display:none;margin-top:10px;"></div>
+    </div>
+
+    <!-- Loading spinner -->
+    <div id="scheduleLoader" class="empty-state" style="display:none">
+      <div class="empty-icon" style="font-size:28px">⏳</div>
+      <p id="scheduleLoaderMsg">Loading…</p>
+    </div>
+
+    <!-- Schedule table -->
+    <div id="scheduleContent"></div>
+  </section>
+
 </main>
 
 <!-- ════ ADD COMPETITION MODAL ════ -->
@@ -128,21 +183,95 @@
   </div>
 </div>
 
-<!-- ════ RANKINGS VIEW ════ -->
-  <section class="view" id="view-rankings">
-    <div class="view-header flex justify-between items-center flex-wrap gap-8">
-      <div>
-        <h1>Team Rankings</h1>
-        <p>Points-based ranking with tunable formula weights.</p>
+<!-- ════ SETTINGS MODAL ════ -->
+<div class="modal-overlay hidden" id="modal-settings">
+  <div class="modal-box" style="max-width:540px;">
+    <div class="modal-header">
+      <h2>Settings</h2>
+      <button class="modal-close" onclick="closeModal('settings')">✕</button>
+    </div>
+
+    <div class="settings-section">
+      <div class="section-title" style="margin-bottom:10px;">RobotEvents API</div>
+      <div class="form-group">
+        <label class="form-label">API Bearer Token</label>
+        <input class="form-input" id="s_reApiKey" type="password" placeholder="Paste your token from robotevents.com/api/v2">
+        <p class="form-hint">Get a free token at <strong>robotevents.com</strong> → Account → Developer → API Keys</p>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="resetWeights()">↺ Reset Weights</button>
+      <div class="form-group">
+        <label class="form-label">Season ID <span style="color:var(--text3);font-weight:400">(V5RC Push Back 2025-26 = 190)</span></label>
+        <input class="form-input" id="s_seasonId" type="number" placeholder="190" value="190">
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="testReApi()" style="margin-bottom:4px">Test Connection</button>
     </div>
-    <div class="card formula-panel" id="formulaPanel" style="margin-bottom:20px;">
-      <div class="section-title" style="margin-bottom:14px;">Formula Weights</div>
-      <div id="weightSliders"></div>
+
+    <div class="divider" style="margin:16px 0"></div>
+
+    <div class="settings-section">
+      <div class="section-title" style="margin-bottom:10px;">Cloud Sync <span style="color:var(--text3);font-size:11px;font-weight:400">— share data live with your team</span></div>
+      <div class="form-group">
+        <label class="form-label">Firebase Config (JSON)</label>
+        <textarea class="form-input" id="s_fbConfig" rows="4"
+          placeholder='{"apiKey":"...","authDomain":"...","databaseURL":"https://xxx.firebaseio.com","projectId":"..."}'></textarea>
+        <p class="form-hint">Create a free Firebase project → Realtime Database → copy config. Set DB rules to <code>".read":true, ".write":true</code></p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Room Code</label>
+        <input class="form-input" id="s_roomCode" placeholder="e.g. states2026-pit">
+        <p class="form-hint">All scouts using the same room code share data in real time.</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sync</label>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button class="btn btn-sm" id="syncToggleBtn" onclick="toggleSync()">Enable Sync</button>
+          <span id="syncStatusText" style="font-size:12px;color:var(--text3)">Sync disabled</span>
+        </div>
+      </div>
     </div>
-    <div id="rankingsContent"></div>
-  </section>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('settings')">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveSettingsForm()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ LOAD EVENT MODAL ════ -->
+<div class="modal-overlay hidden" id="modal-loadEvent">
+  <div class="modal-box" style="max-width:560px;">
+    <div class="modal-header">
+      <h2>Load VEX Event</h2>
+      <button class="modal-close" onclick="closeModal('loadEvent')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Search by Event Name or SKU</label>
+      <div style="display:flex;gap:8px;">
+        <input class="form-input" id="eventSearchInput" placeholder="e.g. State Championship, RE-VRC-25-…" style="flex:1"
+               onkeydown="if(event.key==='Enter')searchEventsUI()">
+        <button class="btn btn-primary btn-sm" onclick="searchEventsUI()">Search</button>
+      </div>
+      <p class="form-hint">Requires a RobotEvents API key (set in Settings ⚙).</p>
+    </div>
+    <div id="eventSearchResults" style="max-height:300px;overflow-y:auto;margin-top:8px;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('loadEvent')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ PREDICTION MODAL ════ -->
+<div class="modal-overlay hidden" id="modal-predict">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-header">
+      <h2 id="predictMatchTitle">Match Prediction</h2>
+      <button class="modal-close" onclick="closeModal('predict')">✕</button>
+    </div>
+    <div id="predictContent"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('predict')">Close</button>
+    </div>
+  </div>
+</div>
 
 <!-- ════ DELETE CONFIRM MODAL ════ -->
 <div class="modal-overlay hidden" id="modal-confirmDelete">
@@ -161,6 +290,10 @@
 
 <!-- ── Toast ── -->
 <div class="toast hidden" id="toast"></div>
+
+<!-- Firebase CDN (loaded dynamically when sync is enabled) -->
+<script id="fbAppScript"></script>
+<script id="fbDbScript"></script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="scouting.js"></script>
