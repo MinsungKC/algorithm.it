@@ -16,6 +16,7 @@
     <button class="nav-link" onclick="showView('scout')">Scout</button>
     <button class="nav-link" onclick="showView('teams')">Teams</button>
     <button class="nav-link" onclick="showView('compare')">Compare</button>
+    <button class="nav-link" onclick="showView('rankings')">Rankings</button>
   </div>
   <div class="nav-right">
     <select class="comp-select" id="compSelect" onchange="setActiveComp(this.value)">
@@ -126,6 +127,22 @@
     </div>
   </div>
 </div>
+
+<!-- ════ RANKINGS VIEW ════ -->
+  <section class="view" id="view-rankings">
+    <div class="view-header flex justify-between items-center flex-wrap gap-8">
+      <div>
+        <h1>Team Rankings</h1>
+        <p>Points-based ranking with tunable formula weights.</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="resetWeights()">↺ Reset Weights</button>
+    </div>
+    <div class="card formula-panel" id="formulaPanel" style="margin-bottom:20px;">
+      <div class="section-title" style="margin-bottom:14px;">Formula Weights</div>
+      <div id="weightSliders"></div>
+    </div>
+    <div id="rankingsContent"></div>
+  </section>
 
 <!-- ════ DELETE CONFIRM MODAL ════ -->
 <div class="modal-overlay hidden" id="modal-confirmDelete">
